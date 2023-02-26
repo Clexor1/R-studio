@@ -1,0 +1,124 @@
+---
+title: "Slučajevi COVID-19 u Hrvatskoj"
+author: "Aleksandar.B, Goran.B.M"
+output: 
+  flexdashboard::flex_dashboard:
+       orientation: columns
+runtime: shiny 
+---
+
+```{r global, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+library(flexdashboard)
+library(shiny)
+library(jsonlite)
+library(tidyverse)
+library(ggplot2)
+library(stringr)
+library(lubridate)
+```
+
+```{r  echo=FALSE}
+
+data1 <-fromJSON("https://www.koronavirus.hr/json/?action=po_danima_zupanijama", flatten=TRUE, simplifyDataFrame=TRUE)
+    Datum <- as.Date(data1$Datum)
+    
+    varijabla1 <- data1$PodaciDetaljno
+    
+
+    varijabla2 <- vector(mode="list", length=length(varijabla1))
+
+for (i in 1:length(varijabla2)){
+      varijabla2[[i]] <- data.frame(Datum=Datum[i],
+                                 broj_zarazenih=varijabla1[[i]]$broj_zarazenih,
+                                 broj_umrlih=varijabla1[[i]]$broj_umrlih,
+                                 broj_aktivni=varijabla1[[i]]$broj_aktivni,
+                                 Zupanija=varijabla1[[i]]$Zupanija)
+}
+odabir <- do.call(rbind, varijabla2)
+zupanije <- unique(odabir$Zupanija)
+
+data2 <- fromJSON("https://www.koronavirus.hr/json/?action=po_osobama") |> mutate(Datum=as.Date(Datum), dob=year(Datum) - dob)
+```
+
+Brojevi slučajeva po županijama {data-navmenu="Izbornik"}
+====================================== 
+Input{.sidebar data-width=450}
+-----------------------------------------------------------------------
+Izaberite jednu ili više županija, vremenski raspon i vrstu podataka.
+
+```{r echo=FALSE }
+inputPanel(
+  
+selectInput("zupanija", "Izaberite županije:", choices=c("Bjelovarsko-bilogorska","Brodsko-posavska", "Dubrovačko-neretvanska", "Grad Zagreb", "Istarska", "Karlovačka", "Koprivničko-križevačka", "Krapinsko-zagorska", "Ličko-senjska", "Međimurska", "Osječko-baranjska", "Požeško-slavonska", "Primorsko-goranska", "Šibensko-kninska", "Sisačko-moslavačka", "Splitsko-dalmatinska", "Varaždinska", "Virovitičko-podravska", "Vukovarsko-srijemska", "Zadarska", "Zagrebačka"),
+            selected = "Varaždinska", multiple=TRUE),
+
+sliderInput("period", label = "Izaberite vremensko razdoblje:", min = min(odabir$Datum),max = max(odabir$Datum),
+                  value = c(min(odabir$Datum),max(odabir$Datum)), step = 1),
+
+selectInput("odabir", "Izaberite vrstu podataka:", choices=c("Ukupno zaraženih", "Ukupno umrlih", "Ukupno aktivnih"),
+            selected = "Ukupno aktivnih", multiple = FALSE),
+)
+
+```
+Column {data-width=650}
+-----------------------------------------------------------------------
+
+```{r echo=FALSE}
+renderPlot({
+  y<-case_when(
+                input$odabir=="Ukupno zaraženih" ~ "broj_zarazenih",
+                input$odabir=="Ukupno umrlih" ~ "broj_umrlih",
+                input$odabir=="Ukupno aktivnih" ~ "broj_aktivni")
+  
+  odabir|> filter(Zupanija %in% input$zupanija,
+                  Datum>input$period[1],
+                  Datum<input$period[2]) |>
+                       ggplot(aes(x=Datum, y=get(y),color=Zupanija))+
+                       geom_line()+
+                       geom_smooth(method="loess",size=1.5,span=0.1)+
+                       labs(x="Datum",y=input$odabir, color="Županija")+
+                          theme(text=element_text(size=17))+
+    scale_x_date(date_labels = "%b %y", date_breaks = "2 month",
+                 limits = as.Date(c('2020-04-01','2022-12-01')))
+})
+```
+Distribucija broja slučajeva po starosti i spolu {data-orientation=rows data-navmenu="Izbornik" }
+=============================================   
+
+Row {data-height=450}
+---------------------------------------------------
+
+```{r echo=FALSE }
+renderPlot({
+    data2|>
+      filter(Datum>input$periood[1], Datum<input$periood[2])|>
+      ggplot(aes(x=dob,color=spol))+
+         geom_freqpoly(size=1.5,binwidth=5)+
+          labs(x="Dob",y="Broj slučajeva",color="Spol",title="Poligon frekvencija dobi osoba oboljelih od COVID-19 po spolu")+
+          scale_color_discrete(labels=c(M="Muški",Ž="Ženski"))+
+          theme(text=element_text(size=17)) + scale_x_continuous(breaks=seq(0,130,10))
+},
+height="auto")
+```
+
+Row {data-height=450}
+---------------------------------------------------
+```{r echo=FALSE}
+fluidPage(
+    fluidRow(height=250, column(width=12,
+    sliderInput("periood",label="Izaberite vremensko razdbolje",
+                min=min(data2$Datum), max=max(data2$Datum),
+                value=c(min(data2$Datum), max(data2$Datum)), width=500), align="center"), step=1))
+```
+<style>                     
+.navbar {
+  background-color:#222222;
+  border-color:black;
+  
+}
+.navbar-brand {
+color:#a4aab3!important;
+}
+
+</style>
